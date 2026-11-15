@@ -306,7 +306,7 @@ public class AlarmService extends Service {
 
     play();
     vibrate();
-    h.postDelayed(autoStop, 10 * 60 * 1000L);
+    h.postDelayed(autoStop, 3 * 60 * 1000L);
     NativeAlarmPlugin.emit("ringing", label, time);
   }
 
@@ -340,16 +340,8 @@ public class AlarmService extends Service {
       } else {
         mp.setDataSource(this, defaultUri());
       }
-      mp.setLooping(!clip);
-      if (clip) {
-        mp.setOnCompletionListener(m -> {
-          try {
-            m.seekTo(s);
-            m.start();
-          } catch (Exception x1) {
-          }
-        });
-      }
+      mp.setLooping(false);
+      mp.setOnCompletionListener(m -> stopAlarm());
       mp.setOnErrorListener((m, what, extra) -> {
         playDefault();
         return true;
@@ -364,7 +356,8 @@ public class AlarmService extends Service {
               public void run() {
                 try {
                   if (mp != null && mp.isPlaying() && mp.getCurrentPosition() >= e - 40) {
-                    mp.seekTo(s);
+                    stopAlarm();
+                    return;
                   }
                 } catch (Exception x2) {
                 }
@@ -395,7 +388,8 @@ public class AlarmService extends Service {
       mp = new MediaPlayer();
       mp.setAudioAttributes(alarmAttrs());
       mp.setDataSource(this, defaultUri());
-      mp.setLooping(true);
+      mp.setLooping(false);
+      mp.setOnCompletionListener(m -> stopAlarm());
       mp.setOnPreparedListener(m -> m.start());
       mp.prepareAsync();
     } catch (Exception x5) {
@@ -405,11 +399,11 @@ public class AlarmService extends Service {
   private void vibrate() {
     try {
       vib = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-      long[] pat = new long[] {0, 700, 500};
+      long[] pat = new long[] {0, 700, 400, 700};
       if (Build.VERSION.SDK_INT >= 26) {
-        vib.vibrate(VibrationEffect.createWaveform(pat, 0), alarmAttrs());
+        vib.vibrate(VibrationEffect.createWaveform(pat, -1), alarmAttrs());
       } else {
-        vib.vibrate(pat, 0);
+        vib.vibrate(pat, -1);
       }
     } catch (Exception x6) {
     }
