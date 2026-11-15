@@ -78,7 +78,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 <body>
 <main>
   <h1>منبه الطاقة</h1>
-  <p class="cap" style="text-align:center;margin:0">نسخة 8 (تشتغل بدون نت)</p>
+  <p class="cap" style="text-align:center;margin:0">نسخة 9 (منبه أندرويد)</p>
   <div class="stage" id="stage"><div class="plate" id="plate"><b id="clock">--:--</b><span id="date"></span></div></div>
 
   <section class="card">
@@ -148,7 +148,7 @@ function pad(n){return String(n).padStart(2,"0")}
 var alarms=[],ctx=null,beepTimer=null,lastFired="",playing=null,tone={buf:null,name:"",s:0,e:0,p:[]},sel=[];
 try{alarms=JSON.parse(localStorage.getItem("manbah")||"[]")}catch(e){alarms=[]}
 if(!alarms.length){alarms=[{id:1,t:"06:30",l:"صلاة الفجر",on:true,d:[0,1,2,3,4,5,6]},{id:2,t:"08:00",l:"الشغل",on:false,d:[0,1,2,3,4]}]}
-function save(){try{localStorage.setItem("manbah",JSON.stringify(alarms))}catch(e){}}
+function save(){try{localStorage.setItem("manbah",JSON.stringify(alarms))}catch(e){}if(window.schedAll)schedAll()}
 function toast(m){var t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},2600)}
 
 /* ---------- الصوت ---------- */
@@ -277,6 +277,37 @@ $("wl").onclick=function(){
   if(!navigator.wakeLock){toast("المتصفح ده مش بيدعم إبقاء الشاشة شغالة");return}
   wlGet().then(function(){wlWant=true;$("wl").textContent="🔓 الشاشة هتفضل شغالة (اضغط للإلغاء)"}).catch(function(){toast("مقدرتش أبقي الشاشة شغالة هنا")})};
 document.addEventListener("visibilitychange",function(){if(!document.hidden){tick();if(wlWant&&!wlock)wlGet().catch(function(){})}});
+
+/* ---------- المنبه الأصلي (أندرويد) ---------- */
+var LN=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.LocalNotifications)||null;
+function nid(a,i){return (Math.abs(a.id)%1000000)*100+i}
+function nextAt(a){var p=a.t.split(":"),d=new Date();d.setHours(+p[0],+p[1],0,0);if(d.getTime()<=Date.now())d.setDate(d.getDate()+1);return d}
+function schedAll(){
+  if(!LN)return;
+  LN.getPending().then(function(r){return r.notifications.length?LN.cancel({notifications:r.notifications}):0}).then(function(){
+    var list=[];
+    alarms.forEach(function(a){
+      if(!a.on)return;
+      var title=a.l||"منبه",body=a.t,p=a.t.split(":");
+      if(a.next){
+        var t=a.next,k=0,g=0;
+        while(k<30&&g++<5000){if(t>Date.now()){list.push({id:nid(a,k),title:title,body:body,channelId:"alarm",schedule:{at:new Date(t),allowWhileIdle:true}});k++}t=addInt(t,a.n,a.u)}
+      }else{
+        var days=a.d||[];
+        if(!days.length){list.push({id:nid(a,0),title:title,body:body,channelId:"alarm",schedule:{at:nextAt(a),allowWhileIdle:true}})}
+        else days.forEach(function(k){list.push({id:nid(a,k+1),title:title,body:body,channelId:"alarm",schedule:{on:{weekday:k+1,hour:+p[0],minute:+p[1]},allowWhileIdle:true}})})
+      }
+    });
+    if(list.length)return LN.schedule({notifications:list});
+  }).catch(function(e){toast("تعذر جدولة المنبه في النظام")});
+}
+if(LN){
+  LN.createChannel({id:"alarm",name:"المنبهات",importance:5,visibility:1,vibration:true}).catch(function(){});
+  LN.requestPermissions().then(function(){
+    return LN.checkExactNotificationSetting?LN.checkExactNotificationSetting().then(function(s){if(s.exact_alarm==="denied")return LN.changeExactNotificationSetting()}):0
+  }).catch(function(){}).then(schedAll);
+  LN.addListener("localNotificationActionPerformed",function(){tick()});
+}
 
 renderDays();render();tick();setInterval(tick,1000);
 </script>
