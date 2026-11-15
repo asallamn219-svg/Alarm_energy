@@ -78,7 +78,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 <body>
 <main>
   <h1>منبه الطاقة</h1>
-  <p class="cap" style="text-align:center;margin:0">نسخة 9 (منبه أندرويد)</p>
+  <p class="cap" style="text-align:center;margin:0">نسخة 10 (منبه أندرويد حقيقي)</p>
   <div class="stage" id="stage"><div class="plate" id="plate"><b id="clock">--:--</b><span id="date"></span></div></div>
 
   <section class="card">
@@ -148,7 +148,7 @@ function pad(n){return String(n).padStart(2,"0")}
 var alarms=[],ctx=null,beepTimer=null,lastFired="",playing=null,tone={buf:null,name:"",s:0,e:0,p:[]},sel=[];
 try{alarms=JSON.parse(localStorage.getItem("manbah")||"[]")}catch(e){alarms=[]}
 if(!alarms.length){alarms=[{id:1,t:"06:30",l:"صلاة الفجر",on:true,d:[0,1,2,3,4,5,6]},{id:2,t:"08:00",l:"الشغل",on:false,d:[0,1,2,3,4]}]}
-function save(){try{localStorage.setItem("manbah",JSON.stringify(alarms))}catch(e){}if(window.schedAll)schedAll()}
+function save(){ensureFire();try{localStorage.setItem("manbah",JSON.stringify(alarms))}catch(e){}if(window.schedAll)schedAll()}
 function toast(m){var t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},2600)}
 
 /* ---------- الصوت ---------- */
@@ -177,7 +177,7 @@ function playTone(loop){stopTone();var c=AC(),s=c.createBufferSource();s.buffer=
 
 /* ---------- اختيار النغمة والقص ---------- */
 function fmt(t){var m=Math.floor(t/60),s=t-m*60;return m+":"+(s<10?"0":"")+s.toFixed(1)}
-function sync(){var d=tone.buf.duration;$("selr").style.left=tone.s/d*100+"%";$("selr").style.right=(1-tone.e/d)*100+"%";
+function sync(){clipSave();var d=tone.buf.duration;$("selr").style.left=tone.s/d*100+"%";$("selr").style.right=(1-tone.e/d)*100+"%";
   $("ts").value=tone.s.toFixed(1);$("te").value=tone.e.toFixed(1);
   $("tlen").textContent="من "+fmt(tone.s)+" إلى "+fmt(tone.e)+" — مدة المقطع "+(tone.e-tone.s).toFixed(1)+" ثانية من "+fmt(d)}
 function buildWave(b){var d=b.getChannelData(0),n=120,step=Math.floor(d.length/n)||1,p=[];
@@ -189,7 +189,7 @@ $("file").onchange=function(){var f=this.files[0];if(!f)return;stopTone();
   if(aud.dataset.u)URL.revokeObjectURL(aud.dataset.u);aud.dataset.u=URL.createObjectURL(f);aud.src=aud.dataset.u;lastI=0;
   f.arrayBuffer().then(function(ab){return AC().decodeAudioData(ab)}).then(function(b){
     tone.buf=b;tone.name=f.name;tone.s=0;tone.e=Math.min(b.duration,30);buildWave(b);
-    $("fname").textContent="النغمة: "+f.name;$("trim").classList.remove("hide");sync();setPos(0)
+    $("fname").textContent="النغمة: "+f.name;$("trim").classList.remove("hide");sync();setPos(0);sendTone(f)
   }).catch(function(){toast("الملف ده مش صوت مدعوم، جرّب ملف تاني")})};
 function drag(el,isStart){el.addEventListener("pointerdown",function(ev){if(!tone.buf)return;ev.preventDefault();ev.stopPropagation();el.setPointerCapture(ev.pointerId);stopTone();setPrev(false);
   function mv(e){var r=$("wave").getBoundingClientRect(),d=tone.buf.duration,t=Math.min(d,Math.max(0,(e.clientX-r.left)/r.width*d));
@@ -231,7 +231,7 @@ function render(){var el=$("list");el.innerHTML="";
     var d=document.createElement("div");d.className="item"+(a.on?"":" off");
     d.innerHTML='<span class="t">'+a.t+'</span><span class="l"></span><button class="sw'+(a.on?" on":"")+'" aria-label="تشغيل أو إيقاف"></button><button class="del" aria-label="حذف">✕</button>';
     var lb=d.querySelector(".l");lb.textContent=a.l||"منبه";var sm=document.createElement("small");sm.textContent=rep(a);lb.appendChild(sm);
-    d.querySelector(".sw").onclick=function(){a.on=!a.on;save();render()};
+    d.querySelector(".sw").onclick=function(){a.on=!a.on;a.fireAt=0;save();render()};
     d.querySelector(".del").onclick=function(){alarms=alarms.filter(function(x){return x.id!==a.id});save();render()};
     el.appendChild(d)})}
 function toLocal(d){return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+"T"+pad(d.getHours())+":"+pad(d.getMinutes())}
@@ -248,16 +248,16 @@ function ring(a){$("ringLabel").textContent=a.l||"اصحى!";$("ringTime").textC
   clearInterval(beepTimer);stopTone();setPrev(false);
   if(tone.buf)playTone(false);else beep();
   if(navigator.vibrate){try{navigator.vibrate([300,200,300])}catch(e){}}ring.cur=a}
-function stopRing(){clearInterval(beepTimer);stopTone();setPrev(false);$("ring").classList.remove("show")}
+function stopRing(){clearInterval(beepTimer);stopTone();setPrev(false);$("ring").classList.remove("show");if(NA)NA.stop().catch(function(){})}
 $("stop").onclick=stopRing;
 $("snooze").onclick=function(){stopRing();var d=new Date(Date.now()+5*60000);
   alarms.push({id:Date.now(),t:pad(d.getHours())+":"+pad(d.getMinutes()),l:(ring.cur&&ring.cur.l||"منبه")+" (غفوة)",on:true});save();render()};
-$("test").onclick=function(){ring({t:$("clock").textContent,l:"منبه تجريبي"})};
+$("test").onclick=function(){if(NA){NA.test().catch(function(){toast("تعذر تشغيل التجربة")});return}ring({t:$("clock").textContent,l:"منبه تجريبي"})};
 function tick(){var d=new Date(),hm=pad(d.getHours())+":"+pad(d.getMinutes()),nowMs=d.getTime(),from=tick.last||nowMs;tick.last=nowMs;
   $("clock").textContent=hm;$("date").textContent=d.toLocaleDateString("ar-EG",{weekday:"long",day:"numeric",month:"long"});
   var key=hm+"-"+d.getDate();
-  if(key!==lastFired){alarms.forEach(function(a){var days=a.d||[];if(!a.next&&a.on&&a.t===hm&&(!days.length||days.indexOf(d.getDay())>-1)){lastFired=key;if(!days.length){a.on=false;save();render()}ring(a)}})}
-  var now=Date.now();alarms.forEach(function(a){if(a.next&&a.on&&now>=a.next){while(a.next<=now)a.next=addInt(a.next,a.n,a.u);save();render();ring(a)}});if(nowMs-from>5000)catchUp(from,nowMs,hm)}
+  if(!NA&&key!==lastFired){alarms.forEach(function(a){var days=a.d||[];if(!a.next&&a.on&&a.t===hm&&(!days.length||days.indexOf(d.getDay())>-1)){lastFired=key;if(!days.length){a.on=false;save();render()}ring(a)}})}
+  var now=Date.now();alarms.forEach(function(a){if(a.next&&a.on&&now>=a.next){while(a.next<=now)a.next=addInt(a.next,a.n,a.u);save();render();if(!NA)ring(a)}});if(NA){oneOff()}else if(nowMs-from>5000)catchUp(from,nowMs,hm)}
 
 /* ميل اللوحة ثلاثي الأبعاد */
 var stage=$("stage"),plate=$("plate");
@@ -279,34 +279,56 @@ $("wl").onclick=function(){
 document.addEventListener("visibilitychange",function(){if(!document.hidden){tick();if(wlWant&&!wlock)wlGet().catch(function(){})}});
 
 /* ---------- المنبه الأصلي (أندرويد) ---------- */
-var LN=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.LocalNotifications)||null;
+var P=(window.Capacitor&&window.Capacitor.Plugins)||{};
+var NA=P.NativeAlarm||null,LN=P.LocalNotifications||null;
 function nid(a,i){return (Math.abs(a.id)%1000000)*100+i}
 function nextAt(a){var p=a.t.split(":"),d=new Date();d.setHours(+p[0],+p[1],0,0);if(d.getTime()<=Date.now())d.setDate(d.getDate()+1);return d}
+function nextDay(a,k){var p=a.t.split(":"),d=new Date();d.setHours(+p[0],+p[1],0,0);d.setDate(d.getDate()+(k-d.getDay()+7)%7);if(d.getTime()<=Date.now())d.setDate(d.getDate()+7);return d.getTime()}
+function oneShot(a){return !a.next&&!(a.d&&a.d.length)}
+function ensureFire(){alarms.forEach(function(a){if(a.on&&oneShot(a)&&!a.fireAt)a.fireAt=nextAt(a).getTime()})}
+function oneOff(){alarms.forEach(function(a){if(a.on&&oneShot(a)&&a.fireAt&&Date.now()>a.fireAt+2000){a.on=false;a.fireAt=0;save();render()}})}
 function schedAll(){
-  if(!LN)return;
-  LN.getPending().then(function(r){return r.notifications.length?LN.cancel({notifications:r.notifications}):0}).then(function(){
-    var list=[];
-    alarms.forEach(function(a){
-      if(!a.on)return;
-      var title=a.l||"منبه",body=a.t,p=a.t.split(":");
-      if(a.next){
-        var t=a.next,k=0,g=0;
-        while(k<30&&g++<5000){if(t>Date.now()){list.push({id:nid(a,k),title:title,body:body,channelId:"alarm",schedule:{at:new Date(t),allowWhileIdle:true}});k++}t=addInt(t,a.n,a.u)}
-      }else{
-        var days=a.d||[];
-        if(!days.length){list.push({id:nid(a,0),title:title,body:body,channelId:"alarm",schedule:{at:nextAt(a),allowWhileIdle:true}})}
-        else days.forEach(function(k){list.push({id:nid(a,k+1),title:title,body:body,channelId:"alarm",schedule:{on:{weekday:k+1,hour:+p[0],minute:+p[1]},allowWhileIdle:true}})})
-      }
-    });
-    if(list.length)return LN.schedule({notifications:list});
-  }).catch(function(e){toast("تعذر جدولة المنبه في النظام")});
+  if(!NA)return;
+  ensureFire();
+  var list=[],now=Date.now();
+  alarms.forEach(function(a){
+    if(!a.on)return;
+    var lbl=a.l||"منبه";
+    if(a.next){
+      var t=a.next,k=0,g=0;
+      while(k<30&&g++<5000){if(t>now){list.push({id:nid(a,k),at:t,label:lbl,time:a.t,weekly:false});k++}t=addInt(t,a.n,a.u)}
+    }else{
+      var days=a.d||[];
+      if(!days.length){if(a.fireAt>now)list.push({id:nid(a,0),at:a.fireAt,label:lbl,time:a.t,weekly:false})}
+      else days.forEach(function(k){list.push({id:nid(a,k+1),at:nextDay(a,k),label:lbl,time:a.t,weekly:true})})
+    }
+  });
+  NA.schedule({alarms:list}).catch(function(){toast("تعذر جدولة المنبه في النظام")});
 }
-if(LN){
-  LN.createChannel({id:"alarm",name:"المنبهات",importance:5,visibility:1,vibration:true}).catch(function(){});
-  LN.requestPermissions().then(function(){
-    return LN.checkExactNotificationSetting?LN.checkExactNotificationSetting().then(function(s){if(s.exact_alarm==="denied")return LN.changeExactNotificationSetting()}):0
-  }).catch(function(){}).then(schedAll);
-  LN.addListener("localNotificationActionPerformed",function(){tick()});
+var clipT=0;
+function clipSave(){if(!NA)return;clearTimeout(clipT);clipT=setTimeout(function(){if(tone.buf)NA.toneClip({start:tone.s,end:tone.e}).catch(function(){})},400)}
+function sendTone(f){
+  if(!NA)return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    var s=String(rd.result).split(",")[1]||"",i=0,CH=400000,first=true;
+    (function nxt(){
+      if(i>=s.length){NA.toneClip({start:tone.s,end:tone.e}).catch(function(){});try{localStorage.setItem("toneName",f.name)}catch(e){}toast("اتحفظت النغمة في التطبيق");return}
+      NA.toneChunk({b64:s.substr(i,CH),first:first}).then(function(){first=false;i+=CH;nxt()}).catch(function(){toast("تعذر حفظ النغمة")})
+    })()
+  };
+  rd.readAsDataURL(f)
+}
+function showRing(l,t){$("ringLabel").textContent=l||"اصحى!";$("ringTime").textContent=t||"";$("ring").classList.add("show")}
+function chk(){if(!NA)return;NA.status().then(function(r){if(r.ringing)showRing(r.label,r.time);else $("ring").classList.remove("show")}).catch(function(){})}
+if(NA){
+  try{var tn=localStorage.getItem("toneName");if(tn)$("fname").textContent="النغمة المحفوظة في التطبيق: "+tn+" (اختار نغمة تانية لتغييرها)"}catch(e){}
+  NA.addListener("ringing",function(d){showRing(d.label,d.time)});
+  NA.addListener("stopped",function(){$("ring").classList.remove("show")});
+  document.addEventListener("visibilitychange",function(){if(!document.hidden)chk()});
+  window.addEventListener("focus",chk);
+  if(LN&&LN.requestPermissions)LN.requestPermissions().catch(function(){});
+  schedAll();chk();
 }
 
 renderDays();render();tick();setInterval(tick,1000);
