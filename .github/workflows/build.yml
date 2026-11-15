@@ -33,7 +33,8 @@ jobs:
 
       - name: Sync
         run: npx cap sync android
-
+      - name: Add native alarm code
+        run: bash setup-native.sh
       - name: Add permissions
         run: |
           M=android/app/src/main/AndroidManifest.xml
